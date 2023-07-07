@@ -1,0 +1,396 @@
+<!-- 用jquery的方式將程式碼包起來 -->
+<script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.4/dist/leaflet.css"
+    integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
+    crossorigin="" />
+<!-- 一定要在Leaflet's CSS之後再加入 -->
+<script src="https://unpkg.com/leaflet@1.3.4/dist/leaflet.js"
+    integrity="sha512-nMMmRyTVoLYqjP9hrbed9S+FzjZHW5gY1TWCHA5ckwXZBadntCNs8kEqAWdrb9O7rxbCaA4lKTIWjDXZxflOcA=="
+    crossorigin=""></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster-src.js"></script>
+
+<!-- leaflet 風場圖套件 -->
+<link rel="stylesheet" href="./plugin/leaflet-velocity/leaflet-velocity.css">
+</link>
+<script src="./plugin/leaflet-velocity/leaflet-velocity.js"></script>
+
+
+<script src="data/windData.js"></script>
+
+<!-- 空氣觀測點座標檔案 -->
+<script src="data/nanzi_air.js"></script>
+<script src="data/pingtung_air.js"></script>
+<script src="data/cianjhen_air.js"></script>
+<script src="data/taichungPort_air.js"></script>
+<script src="data/tanzi_air.js"></script>
+
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+    }
+</style>
+
+<!-- <div id="map1" style="width: 100%;height: 100%;"></div> -->
+
+<!-- 想要整個頁面都是地圖，所以我在這邊用 style="width: 100%;"填滿寬 -->
+<div id="mapid" style="width: 100%"></div>
+
+<script>
+    (function () {
+        let url = new URL(location.href);
+        const _sDistID = url.searchParams.get('id');
+        let sInfo = "";
+
+        console.log("_sDistID:", _sDistID);
+
+        $("#mapid").height(window.innerHeight);
+
+        //給圖層一個html框架，預設中心點與縮放
+        var myMap = L.map("mapid", {
+            center: [23.4615187, 120.7005182],
+            zoom: 8,
+        });
+
+        /**/
+
+        //添加地圖Layer
+        const baseOpenStreet = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "© OpenStreetMap",
+        }).addTo(myMap);
+
+        // 國土測繪中心 臺灣通用電子地圖
+        const baseEMAP = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+            maxNativeZoom: 20,
+            maxZoom: 20
+        });
+
+        const Esri_DarkGreyCanvas = L.tileLayer(
+            "http://{s}.sm.mapstack.stamen.com/" +
+            "(toner-lite,$fff[difference],$fff[@23],$fff[hsl-saturation@20])/" +
+            "{z}/{x}/{y}.png",
+        );
+
+        let markers = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
+
+        let markersLayer = new L.layerGroup();
+        //markersLayer.addTo(myMap);
+
+        let randomMarker = new L.layerGroup();
+        randomMarker.addTo(myMap);
+
+        let windLayer = new L.layerGroup();
+
+        let baseLayers = {
+            '開放街圖': baseOpenStreet,
+            '臺灣通用電子地圖': baseEMAP,
+            'ESRI圖層': Esri_DarkGreyCanvas
+        };
+
+        let overlays = {
+            'pm2.5': markersLayer,
+            '隨機地標': randomMarker,
+            '風場': windLayer
+
+        };
+
+        let controler = L.control.layers(baseLayers, overlays).addTo(myMap);
+
+        let arr = [];
+        CreatePoint(100);
+        console.log("GetStartToday:", GetStartToday());
+        console.log("GetEndToday:", GetEndToday());
+
+        function random(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function CreatePoint(count) {　　// count為產生的點數量
+            for (let i = 0; i < count; i++) {
+                let longitude = random(120.5, 121.4);  // 經度介於120.5~121.4
+                let latitude = random(23, 24.6);  // 緯度介於23~24.6
+
+                arr.push([latitude, longitude]);
+            }
+        }
+
+
+        for (let i = 0; i < arr.length; i++) {
+            //console.log("arr:", arr[i]);
+            var marker = L.marker(L.latLng(arr[i][0], arr[i][1])).bindPopup(arr[i][0] + ", " + arr[i][1]);
+            markers.addLayer(marker);
+            randomMarker.addLayer(markers);
+        }
+
+
+        initWind(cWindData);
+
+
+        //查看臺中港
+        if (_sDistID == "EPZ001") {
+            InitTaichungPortAirBox();
+            setTimeout(() => {
+                myMap.setZoom(15);
+                myMap.panTo(new L.LatLng(24.2396934, 120.5120657));
+            }, 10);
+        }
+        //查看潭子
+        else if (_sDistID == "EPZ003") {
+            InitTaiziAirBox();
+            setTimeout(() => {
+                myMap.setZoom(17);
+                myMap.panTo(new L.LatLng(24.2184405, 120.7019091));
+            }, 10);
+        }
+        //查看楠梓
+        else if (_sDistID == "EPZ004") {
+            setTimeout(() => {
+                myMap.setZoom(15);
+                myMap.panTo(new L.LatLng(22.7195473, 120.3071702));
+            }, 10);
+            InitNanziAirBox();
+
+        }
+        //查看前鎮
+        else if (_sDistID == "EPZ005") {
+            InitCianjhenAirBox();
+            setTimeout(() => {
+                myMap.setZoom(15);
+                myMap.panTo(new L.LatLng(22.5975779, 120.2969528));
+            }, 10);
+        }
+        //查看屏東
+        else if (_sDistID == "EPZ009") {
+            InitPingtungAirBox();
+            setTimeout(() => {
+                myMap.setZoom(15);
+                myMap.panTo(new L.LatLng(22.6381329, 120.4549904));
+            }, 10);
+        }
+        //查看全部
+        else {
+            InitTaichungPortAirBox();
+            InitTaiziAirBox();
+            InitNanziAirBox();
+            InitCianjhenAirBox();
+            InitPingtungAirBox();
+        }
+
+        function InitTaichungPortAirBox() {
+            cTaichungPortData.map(function (item, index, array) {
+                let airUrl = "https://wot.epa.gov.tw/Layer/get_json?url=http://10.0.100.184/api/v1/data/device/" + item._id.toString() + "/pm2_5,pm10,co,voc/" + GetStartToday() + "/" + GetEndToday() + "/0?";
+
+                callApi(airUrl, null, "GET", function (result) {
+                    let cSetting = checkPM(result);
+
+                    sInfo = "";
+                    sInfo += "<p>裝置名稱: " + item.name + "</p>";
+                    sInfo += "<p>裝置編號: " + item._id + "</p>";
+                    sInfo += "<p>PM<sub>2.5</sub>: " + cSetting.pm2_5 + "</p>";
+                    sInfo += "<p>資料時間: " + cSetting.time + "</p>";
+                    let m1 = L.circleMarker([item.lat, item.lon], cSetting.style).bindPopup(sInfo);//.addTo(myMap);
+                    markersLayer.addLayer(m1);
+                });
+            });
+        }
+
+        function InitTaiziAirBox() {
+            cTanziData.map(function (item, index, array) {
+                let airUrl = "https://wot.epa.gov.tw/Layer/get_json?url=http://10.0.100.184/api/v1/data/device/" + item._id.toString() + "/pm2_5,pm10,co,voc/" + GetStartToday() + "/" + GetEndToday() + "/0?";
+
+                callApi(airUrl, null, "GET", function (result) {
+                    let cSetting = checkPM(result);
+
+                    sInfo = "";
+                    sInfo += "<p>裝置名稱: " + item.name + "</p>";
+                    sInfo += "<p>裝置編號: " + item._id + "</p>";
+                    sInfo += "<p>PM<sub>2.5</sub>: " + cSetting.pm2_5 + "</p>";
+                    sInfo += "<p>資料時間: " + cSetting.time + "</p>";
+                    let m1 = L.circleMarker([item.lat, item.lon], cSetting.style).bindPopup(sInfo);//.addTo(myMap);
+                    markersLayer.addLayer(m1);
+                });
+            });
+        }
+
+        function InitNanziAirBox() {
+            cNanZiData.map(function (item, index, array) {
+                let airUrl = "https://wot.epa.gov.tw/Layer/get_json?url=http://10.0.100.184/api/v1/data/device/" + item._id.toString() + "/pm2_5,pm10,co,voc/" + GetStartToday() + "/" + GetEndToday() + "/0?";
+
+                callApi(airUrl, null, "GET", function (result) {
+                    let cSetting = checkPM(result);
+
+                    sInfo = "";
+                    sInfo += "<p>裝置名稱: " + item.name + "</p>";
+                    sInfo += "<p>裝置編號: " + item._id + "</p>";
+                    sInfo += "<p>PM<sub>2.5</sub>: " + cSetting.pm2_5 + "</p>";
+                    sInfo += "<p>資料時間: " + cSetting.time + "</p>";
+                    let m1 = L.circleMarker([item.lat, item.lon], cSetting.style).bindPopup(sInfo);//.addTo(myMap);
+                    markersLayer.addLayer(m1);
+                });
+            });
+        }
+
+        function InitCianjhenAirBox() {
+            cCianjhenData.map(function (item, index, array) {
+                let airUrl = "https://wot.epa.gov.tw/Layer/get_json?url=http://10.0.100.184/api/v1/data/device/" + item._id.toString() + "/pm2_5,pm10,co,voc/" + GetStartToday() + "/" + GetEndToday() + "/0?";
+
+                callApi(airUrl, null, "GET", function (result) {
+                    let cSetting = checkPM(result);
+
+                    sInfo = "";
+                    sInfo += "<p>裝置名稱: " + item.name + "</p>";
+                    sInfo += "<p>裝置編號: " + item._id + "</p>";
+                    sInfo += "<p>PM<sub>2.5</sub>: " + cSetting.pm2_5 + "</p>";
+                    sInfo += "<p>資料時間: " + cSetting.time + "</p>";
+                    let m1 = L.circleMarker([item.lat, item.lon], cSetting.style).bindPopup(sInfo);//.addTo(myMap);
+                    markersLayer.addLayer(m1);
+                });
+            });
+        }
+
+        function InitPingtungAirBox() {
+            cPingtungData.map(function (item, index, array) {
+                let airUrl = "https://wot.epa.gov.tw/Layer/get_json?url=http://10.0.100.184/api/v1/data/device/" + item._id.toString() + "/pm2_5,pm10,co,voc/" + GetStartToday() + "/" + GetEndToday() + "/0?";
+
+                callApi(airUrl, null, "GET", function (result) {
+                    let cSetting = checkPM(result);
+
+                    sInfo = "";
+                    sInfo += "<p>裝置名稱: " + item.name + "</p>";
+                    sInfo += "<p>裝置編號: " + item._id + "</p>";
+                    sInfo += "<p>PM<sub>2.5</sub>: " + cSetting.pm2_5 + "</p>";
+                    sInfo += "<p>資料時間: " + cSetting.time + "</p>";
+                    let m1 = L.circleMarker([item.lat, item.lon], cSetting.style).bindPopup(sInfo);//.addTo(myMap);
+                    markersLayer.addLayer(m1);
+                });
+            });
+        }
+
+        function checkPM(cResult) {
+            console.log("cResult:", cResult);
+            if (cResult.length > 0) {
+                let pm2_5 = cResult[0].pm2_5;
+                // 0-15 綠
+                // 15-35 黃
+                // 35以上 紅
+                if ((pm2_5 < 15) && (pm2_5 >= 0)) {
+                    return {
+                        "pm2_5": cResult[0].pm2_5,
+                        "time": ConvertTime(cResult[0].time),
+                        "style": {
+                            "radius": 10,
+                            "fillColor": "#008000",
+                            "color": "#008000",
+                            "fillOpacity": 0.5,
+                            "opacity": 0.5
+                        }
+                    }
+                }
+                else if ((pm2_5 < 35) && (pm2_5 >= 15)) {
+                    return {
+                        "pm2_5": cResult[0].pm2_5,
+                        "time": ConvertTime(cResult[0].time),
+                        "style": {
+                            "radius": 10,
+                            "fillColor": "#FFFF00",
+                            "color": "#FFFF00",
+                            "fillOpacity": 0.5,
+                            "opacity": 0.5
+                        }
+                    };
+                }
+                else if (pm2_5 >= 35) {
+                    return {
+                        "pm2_5": cResult[0].pm2_5,
+                        "time": ConvertTime(cResult[0].time),
+                        "style": {
+                            "radius": 10,
+                            "fillColor": "#FF0000",
+                            "color": "#FF0000",
+                            "fillOpacity": 0.5,
+                            "opacity": 0.5
+                        }
+                    };
+                }
+            }
+        }
+        function callApi(url, args, methods, callback) {
+            let oResult;
+            $.ajax({
+                async: (callback != undefined),
+                type: methods,
+                url: url,
+                //data: JSON.stringify(args),
+                //dataType: "json",
+                //contentType: "application/json; charset=utf-8",
+                success: function (data, textStatus, jqXHR) {
+                    oResult = data;
+
+                    if (callback != undefined) {
+                        callback(oResult);
+                    }
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    console.log("error");
+                }
+            });
+            return oResult;
+        }
+
+        function ConvertTime(time) {
+            var d = new Date();
+            var localTime = d.getTime();
+            var localOffset = d.getTimezoneOffset() * 60000;   //getTimezoneOffset()返回是以分鐘為單位，需要轉化成ms
+            var utc = localTime + localOffset;
+            offset = 8;
+            var cDateTime = new Date(utc + (3600000 * offset));
+            //console.log("nd:", nd);
+            //console.log("Korean time is " + nd.toLocaleString());
+            return cDateTime.getFullYear() + "-" + (cDateTime.getMonth() + 1).padLeft('0', 2) + "-" + cDateTime.getDate().padLeft('0', 2) + " " + cDateTime.getHours().padLeft('0', 2) + ":" + cDateTime.getMinutes().padLeft('0', 2) + ":" + cDateTime.getSeconds().padLeft('0', 2);
+        }
+
+
+        Number.prototype.padLeft = function (ch, base) {
+            var nr = this, iLength = (base - String(nr).length) + 1;
+            return ((iLength > 0) ? new Array(iLength).join(ch) + nr : nr.toString());
+        };
+
+        // 生成一個wind圖層並返回
+        function initWind(data) {
+            var velocityLayer = L.velocityLayer({
+                displayValues: true,
+                displayOptions: {
+                    velocityType: 'GBR Wind',
+                    displayPosition: 'bottomleft',
+                    displayEmptyString: 'No wind data'
+                },
+                data: data,
+                minVelocity: 0, //Velocity：速率
+                maxVelocity: 10,
+                velocityScale: 0.005,
+                particleMultiplier: 1 / 300,//粒子的數量
+                lineWidth: 3,                     //粒子的粗細
+                frameRate: 15,                      //定義每秒執行的次數
+                colorScale: ["rgb(255,255,255)", "rgb(255,255,255)", "rgb(255,255,255)", "rgb(255,255,255)", "rgb(255,255,255)"]
+            });
+            windLayer.addLayer(velocityLayer);
+        }
+
+        function GetStartToday() {
+            var date = new Date();
+            return date.getFullYear() + "-" + (date.getMonth() + 1) + "-" + date.getDate() + " 00:00:00";
+        }
+
+        function GetEndToday() {
+            var date = new Date();
+            return date.getFullYear() + "-" + (date.getMonth() + 1) + "-" + date.getDate() + " 23:59:59";
+        }
+
+    })();
+</script>
